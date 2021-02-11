@@ -26,7 +26,7 @@ yarn-error.log*
 /data
 api/data
 /donotupload
-/mysite/mysite/settings.py
+/mysite/settings.py
 
 # data
 *.pth
