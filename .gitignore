@@ -23,10 +23,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # custom
-/data
-api/data
-/donotupload
-/mysite/mysite/settings.py
+settings.py
 
 # data
 *.pth
