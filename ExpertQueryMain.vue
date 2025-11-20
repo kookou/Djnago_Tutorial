@@ -1094,6 +1094,7 @@ import {
     nextTick,
     computed,
     onMounted,
+    onBeforeUnmount,
     watch,
     watchEffect,
     toRaw
@@ -3013,13 +3014,13 @@ function buildCompleteListFromFlat(flat) {
 
 const testParam = ref({
     selectTargetAreaGroupId: 'AG0000000004',
-    selectTargetAreaId: 'TA0000000427',
-    selectTargetId: 'TM0000006644',
+    selectTargetAreaId: 'TA0000000150',
+    selectTargetId: 'TM0000006646',
     // selectTargetUserId : ,
     expertReqestType: 'load'
 })
 
-const testParam2 = ref({ targetId: 'TM0000006644' })
+const testParam2 = ref({ targetId: 'TM0000006646' })
 
 /** 서버 응답(selectTargetCondition) → flat 배열로 변환 */
 function mapResponseToFlat(resp) {
@@ -3086,9 +3087,14 @@ async function checkCompleteListLoad() {
         const groupList = response?.selectTargetAreaGroupList || []
 
         // 로드 기준으로 주제/그룹을 강제 동기화
-        const respSelectedAreaId = response?.selectTargetAreaId
+        // 우선순위: response2(실제 타겟 정보) > response(영역 목록) > 첫번째 항목
+        const respAreaIdFromTarget =
+            response2?.selectTarget?.[0]?.targetAreaId ||
+            response2?.selectTarget?.targetAreaId
+        const respAreaIdFromList = response?.selectTargetAreaId
         const fallbackAreaId = targetAreaList.value[0]?.targetAreaId || null
-        const desiredAreaId = respSelectedAreaId || fallbackAreaId
+        const desiredAreaId =
+            respAreaIdFromTarget || respAreaIdFromList || fallbackAreaId
 
         const areaForGroup = targetAreaList.value.find(
             (a) => a.targetAreaId === desiredAreaId
@@ -3104,15 +3110,29 @@ async function checkCompleteListLoad() {
             groupList?.[0] ||
             null
 
+        // 주제영역 ID 세팅 (v-model 바인딩 반영)
         selectedTargetAreaId.value = desiredAreaId || null
+
         if (DEBUG_TOGGLE) {
             console.debug(
-                '[checkCompleteListLoad] set targetAreaList:',
+                '[checkCompleteListLoad] 복원된 areaId:',
+                desiredAreaId
+            )
+            console.debug(
+                '[checkCompleteListLoad] 복원된 groupId:',
+                desiredGroupId
+            )
+            console.debug(
+                '[checkCompleteListLoad] targetAreaList:',
                 targetAreaList.value
             )
             console.debug(
-                '[checkCompleteListLoad] set selectedTargetGroupArea:',
+                '[checkCompleteListLoad] selectedTargetGroupArea:',
                 selectedTargetGroupArea.value
+            )
+            console.debug(
+                '[checkCompleteListLoad] selectedTargetAreaId:',
+                selectedTargetAreaId.value
             )
         }
 
@@ -3504,6 +3524,49 @@ onMounted(() => {
     )
     //isCustomDropdown()
     // mainData()
+})
+
+// 컴포넌트 언마운트 시 전체 상태 초기화
+onBeforeUnmount(() => {
+    // 주제영역/그룹 초기화
+    selectedTargetGroupArea.value = null
+    selectedTargetAreaId.value = null
+    targetAreaGroup.value = []
+    targetAreaList.value = []
+
+    // 조건 빌더 초기화
+    completeList.value = []
+    flattenedList.value = []
+    buttonStates.value = []
+    connectorDepths.value = []
+
+    // 출력 항목 초기화
+    targetReportList.value = []
+    outputFunctionSaveData.value = {}
+
+    // 메타테이블 초기화
+    metaTableList.value = []
+    jsTreeModel.value = {
+        targetAreaId: '',
+        originalTreeData: [],
+        treeData: []
+    }
+
+    // 필수조건 초기화
+    targetAutoConditionList.value = []
+    targetingConditionCheckeds.value = []
+
+    // 페이징 초기화
+    Object.keys(pagingState).forEach((key) => delete pagingState[key])
+
+    // store 초기화
+    store.setTargetGroupId(null)
+
+    if (DEBUG_TOGGLE) {
+        console.log(
+            '[ExpertQueryMain] 컴포넌트 언마운트: 전체 상태 초기화 완료'
+        )
+    }
 })
 
 // 전달 요소 정의 20251015 by hj START -->
