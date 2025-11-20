@@ -1020,7 +1020,7 @@
         centered
         scrollable
         size="lg"
-        class="target-purpose-modal"
+        class="target-group-modal"
         header-class="align-items-start"
         footer-class="d-flex flex-wrap justify-content-between gap-2"
     >
@@ -1035,7 +1035,9 @@
         </template>
 
         <!-- Body -->
-        <b-row class="g-2 justify-content-center my-3 mx-5">
+        <b-row
+            class="target-group-selector g-2 justify-content-center my-3 mx-5"
+        >
             <b-col
                 cols="12"
                 sm="6"
@@ -1114,6 +1116,7 @@ import {
     watchEffect,
     toRaw
 } from 'vue'
+import { useExpertStore } from '@/store/expert'
 import Dropzone from '@/components/Dropzone.vue'
 import Simplebar from 'simplebar-vue'
 import AntTree from '@/components/expert/AntTree.vue'
@@ -2870,74 +2873,135 @@ function __sanitizeLeafFromFlat(item) {
 
 /** 1차원 배열로부터 completeList 구조 생성 (반환만 함) */
 function buildCompleteListFromFlat(flat) {
+    // 새 알고리즘 (v2):
+    // - 서버 flat[i].conditionDepth 는 i 와 i+1 사이 커넥터(연산자)의 스코프 깊이로 본다.
+    // - leaf 자체의 들여쓰기(depth)는 '직전 커넥터의 깊이'를 따른다 (첫 leaf는 0).
+    // - 커넥터 깊이가 증가하면(예: 0->1) 직전 leaf를 새 그룹으로 승격(래핑) 후 그 안에 다음 leaf 추가.
+    // - 커넥터 깊이가 감소하면(예: 1->0) 상위로 그룹 스택을 닫는다.
+    // - 동일 깊이면 같은 그룹(또는 root) 내에서 연산자를 ops 에 추가.
     if (!Array.isArray(flat) || flat.length === 0) return []
 
-    const root = [] // depth 0 컨테이너(그룹 아님)
-    const containerStack = [root] // 각 depth의 children 배열
-    const groupStack = [] // 각 depth(>=1)의 그룹 노드 참조 (index: depth-1)
+    if (DEBUG_TOGGLE) {
+        console.group('[buildCompleteListFromFlat:v2] INPUT')
+        flat.forEach((row, i) => {
+            console.log(
+                `  [${i}] field=${row.metaFieldName} condition=${row.condition} condDepth=${row.conditionDepth}`
+            )
+        })
+        console.groupEnd()
+    }
 
-    const getCurrentDepth = () => containerStack.length - 1
+    // root 그룹을 항상 래퍼로 사용 (연산자 depth=0 저장 가능)
+    const rootGroup = { group: [], ops: [], _indent: 0, depth: 0 }
+    const stack = [rootGroup] // stack[stack.length-1] = 현재 커넥터 깊이 그룹
+    let currentConnectorDepth = 0 // 직전 커넥터가 적용된 깊이
 
-    for (let i = 0; i < flat.length; i++) {
-        const raw = flat[i] || {}
-        const leaf = __sanitizeLeafFromFlat(raw)
-        const d = leaf.depth || 0
-        const currentDepth = getCurrentDepth()
+    // leaf 추가 헬퍼(현재 가장 깊은 그룹에 push)
+    function pushLeaf(leaf) {
+        stack[stack.length - 1].group.push(leaf)
+    }
 
-        // 상위로 올라가기: 스택 축소
-        while (getCurrentDepth() > d) {
-            containerStack.pop()
-            groupStack.pop()
-        }
-        // 더 깊이 들어가기: 신규 그룹 래퍼 생성(_indent=1)
-        while (getCurrentDepth() < d) {
-            const parentChildren = containerStack[containerStack.length - 1]
+    // 그룹 개설: 현재 최상위의 마지막 child(직전 leaf/그룹)를 새 그룹으로 감싼다
+    function openGroup(toDepth) {
+        // toDepth 까지 반복적으로 상승
+        for (let level = currentConnectorDepth + 1; level <= toDepth; level++) {
+            const parent = stack[stack.length - 1]
+            const prev = parent.group[parent.group.length - 1]
+            if (!prev) break // 안전장치
+            // 새 그룹 생성, prev를 첫 child로 이동
             const newGroup = {
-                group: [],
+                group: [prev],
                 ops: [],
                 _indent: 1,
-                depth: 0 // 시각적 depth는 플래튼 시 계산됨
+                depth: level
             }
-            parentChildren.push(newGroup)
-            containerStack.push(newGroup.group)
-            groupStack.push(newGroup)
+            parent.group[parent.group.length - 1] = newGroup
+            stack.push(newGroup)
+            if (DEBUG_TOGGLE) {
+                console.log(
+                    `[buildCompleteListFromFlat:v2] OPEN group depth=${level} (wrap prev leaf)`
+                )
+            }
         }
+        currentConnectorDepth = toDepth
+    }
 
-        // 현재 컨테이너에 leaf 추가
-        const targetChildren = containerStack[containerStack.length - 1]
-        targetChildren.push(leaf)
-
-        // 다음 항목과의 연결자(button)를 해당 스코프 그룹의 ops에 기록
-        if (i < flat.length - 1) {
-            const next = flat[i + 1] || {}
-            const dNext =
-                Number(
-                    next.conditionDepth !== undefined
-                        ? next.conditionDepth
-                        : next.depth
-                ) || 0
-            const minDepth = Math.min(leaf.depth || 0, dNext)
-            const op =
-                raw.condition !== undefined ? raw.condition : raw.button || null
-            if (minDepth > 0 && op) {
-                const owner = groupStack[minDepth - 1]
-                if (owner && Array.isArray(owner.ops)) owner.ops.push(op)
+    // 그룹 닫기: 목표 깊이까지 pop
+    function closeGroup(targetDepth) {
+        while (stack.length > 1 && currentConnectorDepth > targetDepth) {
+            stack.pop()
+            currentConnectorDepth--
+            if (DEBUG_TOGGLE) {
+                console.log(
+                    `[buildCompleteListFromFlat:v2] CLOSE to depth=${currentConnectorDepth}`
+                )
             }
         }
     }
 
-    return root
+    for (let i = 0; i < flat.length; i++) {
+        const raw = flat[i]
+        const leaf = __sanitizeLeafFromFlat(raw)
+        // leaf.depth = 직전 커넥터 깊이 (i==0 이면 0)
+        leaf.depth = i === 0 ? 0 : Number(flat[i - 1]?.conditionDepth) || 0
+        pushLeaf(leaf)
+
+        // i 번째 leaf 와 i+1 leaf 사이 커넥터 처리 (마지막 leaf 제외)
+        if (i < flat.length - 1) {
+            const connDepth = Number(raw.conditionDepth) || 0 // 이 커넥터(연산자)의 스코프 깊이
+            const op = raw.condition || 'AND'
+
+            if (connDepth > currentConnectorDepth) {
+                // 상승: 새 그룹 개설 후 커넥터 ops 할당 (새 그룹이 적용된 상태에서 다음 leaf 추가되므로 OK)
+                openGroup(connDepth)
+            } else if (connDepth < currentConnectorDepth) {
+                // 하강: 그룹 닫고 동일/낮은 깊이로 이동
+                closeGroup(connDepth)
+            }
+            // 현재 깊이(connDepth)에 해당하는 그룹에 연산자 기록
+            // depth=0 이면 rootGroup
+            const target = connDepth === 0 ? rootGroup : stack[stack.length - 1]
+            target.ops.push(op)
+            if (DEBUG_TOGGLE) {
+                console.log(
+                    `[buildCompleteListFromFlat:v2] ADD OP '${op}' at depth=${connDepth}`
+                )
+            }
+            currentConnectorDepth = connDepth
+        }
+    }
+
+    // 모든 그룹 ops 정규화: length-1 맞추기
+    function normalize(group) {
+        const need = Math.max(0, group.group.length - 1)
+        while (group.ops.length < need) group.ops.push('AND')
+        if (group.ops.length > need) group.ops.length = need
+        group.group.forEach((child) => {
+            if (Array.isArray(child.group)) normalize(child)
+        })
+    }
+    normalize(rootGroup)
+
+    if (DEBUG_TOGGLE) {
+        try {
+            console.group('[buildCompleteListFromFlat:v2] RESULT')
+            console.log('tree:', JSON.stringify(rootGroup, null, 2))
+            console.groupEnd()
+        } catch {}
+    }
+    // 최상위는 항상 래퍼 그룹 하나로 반환
+    return [rootGroup]
 }
 
 const testParam = ref({
     selectTargetAreaGroupId: 'AG0000000004',
     selectTargetAreaId: 'TA0000000427',
-    selectTargetId: 'TM0000006642',
+    selectTargetId: 'TM0000006644',
     // selectTargetUserId : ,
     expertReqestType: 'load'
 })
 
-const testParam2 = ref({ targetId: 'TM0000006642' })
+const testParam2 = ref({ targetId: 'TM0000006644' })
 
 /** 서버 응답(selectTargetCondition) → flat 배열로 변환 */
 function mapResponseToFlat(resp) {
@@ -2986,12 +3050,6 @@ async function checkCompleteListLoad() {
             testParam2.value
         )
         const response = await expertModules.expertMain(testParam.value)
-        console.log(
-            '[checkCompleteListLoad] expertMain:',
-            response,
-            ': selectTargetInformation:',
-            response2
-        )
         // 서버 응답 로그 (expertMain)
         if (DEBUG_TOGGLE) {
         }
@@ -3070,12 +3128,12 @@ async function checkCompleteListLoad() {
                 targetAreaId: jsTreeModel.value.targetAreaId,
                 targetAreaGroupId:
                     selectedTargetGroupArea.value?.targetAreaGroupId,
-                // 헤더 표시용 타겟명 유지/갱신
-                targetName: loadedName || props.data?.targetName || '',
                 reportCount: (targetReportList?.value || []).length,
                 targetReportList: targetReportList.value,
                 outputFunctionSaveData: outputFunctionSaveData.value,
                 completeList: completeList.value,
+                // 헤더 표시용 타겟명 유지/갱신
+                targetName: loadedName || props.data?.targetName || '',
                 selectTargetCondition: getFlatCompleteList()
             })
         } catch (emitErr) {
@@ -3105,6 +3163,37 @@ function restoreCompleteListFromFlat(flat) {
         Object.keys(keep).forEach((k) => {
             if (!extraValues[k]) extraValues[k] = keep[k]
         })
+
+        // =======================
+        // 서버 condition/conditionDepth 직접 복원 (임시 그룹 재계산 이전 프레임 고정)
+        // flat[i].condition 은 i 와 i+1 사이 커넥터, flat[i].conditionDepth 는 그 커넥터 depth
+        // 마지막 leaf 는 커넥터 없음
+        const btnCount = Math.max(0, flat.length - 1)
+        const importedButtonStates = []
+        const importedConnectorDepths = []
+        const preCalc = {}
+        for (let i = 0; i < btnCount; i++) {
+            const row = flat[i] || {}
+            const op = row.condition || 'AND'
+            const depthVal =
+                typeof row.conditionDepth === 'number'
+                    ? row.conditionDepth
+                    : Number(row.conditionDepth) || 0
+            importedButtonStates.push({ conditionType: op, _locked: false })
+            importedConnectorDepths.push({
+                key: `import_${i}`,
+                operator: op,
+                depth: depthVal,
+                parentGroupId: null
+            })
+            preCalc[i] = { depth: depthVal }
+        }
+        // 초기 버튼/커넥터/미리 계산된 depth 주입
+        buttonStates.value = importedButtonStates
+        connectorDepths.value = importedConnectorDepths
+        preCalculatedButtonDepths.value = preCalc
+
+        // flattenedList는 watchEffect에서 재계산되므로 여기서는 건드리지 않음
 
         return true
     } catch (e) {
@@ -3426,6 +3515,7 @@ const props = defineProps({
  * - trigger 값 변화에 따라 최신 상태 emit
  */
 const emit = defineEmits(['update:data'])
+const store = useExpertStore()
 
 // completeList는 트리거를 통해 requestPreviewData 호출 시에만 emit
 // ------------------------------------------------------------
@@ -3441,13 +3531,13 @@ watch(
                 targetAreaId: jsTreeModel.value.targetAreaId,
                 targetAreaGroupId:
                     selectedTargetGroupArea.value.targetAreaGroupId,
-                // 헤더 표시용 타겟명 유지 (로드 이후 값이 있으면 그대로 전달)
-                targetName: props.data?.targetName || '',
                 reportCount: (targetReportList?.value || []).length,
                 targetReportList: targetReportList.value,
                 completeList: completeList.value,
                 // 저장용 1차원 조건 배열 (conditionDepth/condition 포함)
                 selectTargetCondition: getFlatCompleteList(),
+                // 헤더 표시용 타겟명 유지 (로드 이후 값이 있으면 그대로 전달)
+                targetName: props.data?.targetName || '',
                 outputFunctionSaveData: outputFunctionSaveData.value
             })
         }
@@ -3462,19 +3552,17 @@ watch(
 const buttonStates = ref([])
 /** ✅ 버튼 인덱스-키 매핑: finalConnectorList 순서의 key 배열 */
 const buttonIndexKeyMap = ref([])
+// ✅ 렌더링 직전에 커넥터 목록(연산자 포함)을 직접 참조하기 위한 캐시
+const renderConnectorList = ref([])
 
 /** ✅ 버튼 라벨 getter (depth 포함) */
 function getConditionLabel(idx) {
-    const conn = connectorDepths.value[idx - 1]
-    const key = conn?.key
-    let state = null
-    if (key) {
-        const mappedIdx = buttonIndexKeyMap.value.indexOf(key)
-        if (mappedIdx >= 0) state = buttonStates.value[mappedIdx]
-    }
-    if (!state) state = buttonStates.value[idx - 1]
-    const conditionType = state?.conditionType || 'AND'
-    return conditionType
+    // 1) 최우선: 최종 커넥터 리스트에 저장된 operator
+    const conn = renderConnectorList.value[idx - 1]
+    if (conn && conn.operator) return conn.operator
+    // 2) 보조: 기존 buttonStates 매핑
+    const fallback = buttonStates.value[idx - 1]?.conditionType
+    return fallback || 'AND'
 }
 
 const flattenedList = ref([]) // UI에 렌더링되는 평면 리스트
@@ -4475,56 +4563,38 @@ watchEffect(
 
                     // currNode를 completeList에서 찾기
                     function findInCompleteList(nodeToFind) {
-                        for (const item of completeList.value) {
-                            if (item === nodeToFind) return item
-                            if (Array.isArray(item.group)) {
-                                for (const child of item.group) {
-                                    if (child === nodeToFind) return child
-                                    if (Array.isArray(child.group)) {
-                                        const found = findRecursive(
-                                            child.group,
-                                            nodeToFind
-                                        )
-                                        if (found) return found
-                                    }
-                                }
-                            }
-                        }
-                        return null
-
-                        function findRecursive(arr, node) {
+                        let foundType = null
+                        function walk(arr) {
                             for (const item of arr) {
-                                if (item === node) return item
-                                if (Array.isArray(item.group)) {
-                                    const found = findRecursive(
-                                        item.group,
-                                        node
-                                    )
-                                    if (found) return found
+                                if (item && Array.isArray(item.group)) {
+                                    if (item === nodeToFind) {
+                                        foundType = 'group'
+                                        return true
+                                    }
+                                    if (walk(item.group)) return true
+                                } else if (item === nodeToFind) {
+                                    foundType = 'leaf'
+                                    return true
                                 }
                             }
-                            return null
+                            return false
                         }
+                        walk(completeList.value || [])
+                        return foundType
                     }
-
-                    const currNodeInList = findInCompleteList(currNode)
-                    const nextNodeInList = findInCompleteList(nextNode)
-
-                    currIsGroup = Array.isArray(currNodeInList?.group)
-                    nextIsGroup = Array.isArray(nextNodeInList?.group)
-
-                    // 리프 판단: group이 없는 경우 (completeList에서 원본 찾기 기준)
-                    currIsLeaf = !Array.isArray(currNodeInList?.group)
-                    nextIsLeaf = !Array.isArray(nextNodeInList?.group)
-
-                    // 🔹 그룹 경계 판단: 양쪽이 다른 그룹의 경계인가?
+                    const currFound = findInCompleteList(currNode)
+                    const nextFound = findInCompleteList(nextNode)
+                    currIsGroup = currFound === 'group'
+                    currIsLeaf = currFound === 'leaf'
+                    nextIsGroup = nextFound === 'group'
+                    nextIsLeaf = nextFound === 'leaf'
+                    // ✅ 추가: 현재 노드가 속한 그룹의 마지막 leaf인지 여부 계산 (누락으로 ReferenceError 발생)
                     const currIsGroupLastLeaf =
-                        currNode.__groupId !== null &&
                         currIsLeaf &&
-                        (typeof currNode.__groupLastIndex === 'number'
-                            ? currNode.__groupIndex ===
-                              currNode.__groupLastIndex
-                            : false)
+                        currNode.__groupId !== null &&
+                        typeof currNode.__groupIndex === 'number' &&
+                        typeof currNode.__groupLastIndex === 'number' &&
+                        currNode.__groupIndex === currNode.__groupLastIndex
                     const nextIsGroupFirstLeaf =
                         nextNode.__groupId !== null &&
                         nextNode.__groupIndex === 0 &&
@@ -4573,17 +4643,43 @@ watchEffect(
             let prev = key ? prevConnectorStates[key] : null
             // 'btn_' 키는 무시: 인덱스가 바뀌면 다른 커넥터로 잘못 매칭될 수 있음
             if (typeof key === 'string' && key.startsWith('btn_')) prev = null
-            // 그룹 내부 커넥터(또는 parentGroupId 존재)는 실제 그룹 ops 우선
-            const isScoped = !!conn?.parentGroupId
-            const cond = isScoped
-                ? conn?.operator || prev || 'AND'
-                : prev || conn?.operator || 'AND'
+
+            // 🔹 우선순위: 1) conn.operator (flattenRecursive에서 설정된 group ops)
+            //             2) prev (이전 상태)
+            //             3) conn.operator fallback
+            //             4) 기본값 AND
+            const cond = conn?.operator || prev || 'AND'
+
+            if (DEBUG_TOGGLE && (conn?.operator || prev)) {
+                console.log(
+                    `[버튼 ${i}] operator=${conn?.operator}, prev=${prev}, final=${cond}`
+                )
+            }
+
             return { conditionType: cond, _locked: false }
         })
         buttonStates.value = rebuiltStates
+        // 🔹 그룹 내부 커넥터(parentGroupId 존재)는 반드시 해당 그룹 ops 값을 강제 적용
+        try {
+            finalConnectorList.forEach((conn, i) => {
+                if (conn?.parentGroupId) {
+                    // connectorList에서 이미 operator 세팅됨 → 직접 덮어쓰기
+                    if (conn.operator)
+                        buttonStates.value[i].conditionType = conn.operator
+                }
+            })
+        } catch (e) {}
+        // 반응성 재트리거
+        buttonStates.value = [...buttonStates.value]
 
         // ✅ 버튼 인덱스-키 매핑 동기화 (라벨 표시 시 키 기반 매칭)
         buttonIndexKeyMap.value = finalConnectorList.map((c) => c?.key)
+        renderConnectorList.value = finalConnectorList.map((c) => ({
+            key: c.key,
+            operator: c.operator,
+            depth: c.depth,
+            parentGroupId: c.parentGroupId
+        }))
 
         // connector depth 반영
         // 🔹 finalConnectorList의 값을 우선 사용 (preCalculatedButtonDepths 포함)
