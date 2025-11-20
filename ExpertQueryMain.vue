@@ -1035,44 +1035,26 @@
         </template>
 
         <!-- Body -->
-        <b-row
-            class="target-group-selector g-2 justify-content-center my-3 mx-5"
-        >
-            <b-col
-                cols="12"
-                sm="6"
-                xl="4"
-                v-for="item in targetAreaGroup"
-                :key="item.targetAreaGroupId"
-            >
-                <b-button
-                    block
-                    size="lg"
-                    variant="dark"
-                    class="btn-targeting w-100"
-                    :class="{
-                        active:
-                            selectedPurposeObj &&
-                            selectedPurposeObj.targetAreaGroupId ===
-                                item.targetAreaGroupId
-                    }"
-                    @click="selectedPurposeObj = item"
-                >
-                    {{ item.targetAreaGroupName }}
-                    <b-badge pill variant="dark">{{
-                        item.targetAreaGroupCount
-                    }}</b-badge>
-                </b-button>
-            </b-col>
-        </b-row>
+        <TargetGroupSelector
+            :target-area-group="targetAreaGroup"
+            :selected-target-area-group="selectedTargetAreaGroup"
+            :cols="{ cols: 12, sm: 6, xl: 4 }"
+            @select="targetAreaGroupSelectedModal"
+        />
 
         <!-- Footer -->
         <template #footer>
             <!-- 왼쪽: 설명문 -->
             <div class="purpose-desc help-message">
-                <template v-if="selectedPurposeObj">
+                <template
+                    v-if="selectedTargetAreaGroup"
+                    v-html="selectedTargetAreaGroup"
+                >
                     <i class="ti ti-info-circle"></i>
-                    {{ selectedPurposeObj.description }}
+                    <div
+                        v-html="selectedTargetAreaGroup.targetAreaGroupNote"
+                    ></div>
+                    <!-- {{ selectedTargetAreaGroup.description }} -->
                 </template>
                 <template v-else>
                     목적을 선택하면 상세 설명이 표시됩니다.
@@ -1090,7 +1072,7 @@
                 <b-button
                     variant="primary"
                     @click="confirmTargetGroupSelection"
-                    :disabled="!selectedPurposeObj"
+                    :disabled="!selectedTargetAreaGroup"
                 >
                     선택 완료
                 </b-button>
@@ -1116,12 +1098,9 @@ import {
     watchEffect,
     toRaw
 } from 'vue'
-import { useExpertStore } from '@/store/expert'
 import Dropzone from '@/components/Dropzone.vue'
 import Simplebar from 'simplebar-vue'
 import AntTree from '@/components/expert/AntTree.vue'
-// 디버그 플래그 (배포용에서는 false 권장)
-const DEBUG_TOGGLE = true
 import Draggable from 'vuedraggable'
 import EmptyMessage from '@/components/EmptyMessage.vue'
 import ExpertPerspectiveCollectionModal from '@/components/expert/ExpertPerspectiveCollectionModal.vue'
@@ -1133,12 +1112,14 @@ import {
 import * as expertModules from '@/modules/expert'
 import Pager from '@/components/Pager.vue'
 import { showAlert, showConfirm } from '@/utils/common'
+import TargetGroupSelector from '@/components/expert/TargetGroupSelector.vue'
+import { useExpertStore } from '@/store/expert.js'
+import { storeToRefs } from 'pinia'
 
-const chips = ref([
-    { id: 1, label: '조건 A', funcName: null },
-    { id: 2, label: '조건 B', funcName: null },
-    { id: 3, label: '조건 C', funcName: null }
-])
+// 디버그 플래그 (배포용에서는 false 권장)
+const DEBUG_TOGGLE = true
+
+const chips = ref([])
 
 const isTargetGroupModalOpen = ref(false) // 목적 list 모달 on/off
 const targetAreaGroup = ref([]) // 목적 그룹
@@ -1180,7 +1161,7 @@ const showTargetGroupModal = async () => {
             selectedTargetGroupArea.value?.targetAreaGroupId ||
             response?.selectTargetAreaGroupId ||
             null
-        selectedPurposeObj.value =
+        selectedTargetAreaGroup.value =
             (Array.isArray(targetAreaGroup.value)
                 ? targetAreaGroup.value.find(
                       (g) => g.targetAreaGroupId === preferredGroupId
@@ -1190,9 +1171,19 @@ const showTargetGroupModal = async () => {
             null
     } catch (e) {
         // 방어적 처리: 문제가 있어도 모달은 열리도록 함
-        selectedPurposeObj.value = targetAreaGroup.value?.[0] || null
+        selectedTargetAreaGroup.value = targetAreaGroup.value?.[0] || null
     }
     isTargetGroupModalOpen.value = true
+}
+
+// 퍼블리싱 추가
+const selectedTargetAreaGroup = ref(null)
+
+const confirmTargetGroupSelection = () => {
+    if (!selectedTargetAreaGroup.value) return
+    const id = selectedTargetAreaGroup.value.targetAreaGroupId
+    targetAreaGroupSelected(id)
+    isTargetGroupModalOpen.value = false
 }
 
 const expertSearchParam = ref({
@@ -4733,15 +4724,5 @@ function getConnectorIndentPx(idx) {
     const conn = connectorDepths.value[idx - 1]
     const indent = conn ? `${conn.depth * 30}px` : '0px'
     return indent
-}
-
-// 퍼블리싱 추가
-const selectedPurposeObj = ref(null)
-
-const confirmTargetGroupSelection = () => {
-    if (!selectedPurposeObj.value) return
-    const id = selectedPurposeObj.value.targetAreaGroupId
-    targetAreaGroupSelected(id)
-    isTargetGroupModalOpen.value = false
 }
 </script>
