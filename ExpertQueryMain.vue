@@ -1120,6 +1120,7 @@ import { storeToRefs } from 'pinia'
 const DEBUG_TOGGLE = true
 
 const chips = ref([])
+const pagingState = reactive({})
 
 const isTargetGroupModalOpen = ref(false) // 목적 list 모달 on/off
 const targetAreaGroup = ref([]) // 목적 그룹
@@ -1178,6 +1179,10 @@ const showTargetGroupModal = async () => {
 
 // 퍼블리싱 추가
 const selectedTargetAreaGroup = ref(null)
+
+function targetAreaGroupSelectedModal(item) {
+    selectedTargetAreaGroup.value = item
+}
 
 const confirmTargetGroupSelection = () => {
     if (!selectedTargetAreaGroup.value) return
@@ -1268,6 +1273,28 @@ const targetAreaSelected = async (targetAreaId) => {
         )
 }
 
+const store = useExpertStore()
+const { selectedTargetGroupId, moveToParam } = storeToRefs(store)
+
+onMounted(async () => {
+    targetingConditionCheckeds.value = targetAutoConditionList.value.map(
+        (t) => t.targetId
+    )
+    const response = await expertModules.selectTargetAreaGroup(
+        homeSearchParam.value
+    )
+    targetAreaGroup.value = response.selectTargetAreaGroup
+})
+
+watch(
+    () => selectedTargetGroupId,
+    (newVal) => {
+        if (newVal) {
+            targetAreaGroupSelected(newVal)
+        }
+    },
+    { immediate: true }
+)
 // ============================================================
 // 섹션: Drag & Drop (조건/출력 빌더)
 // ============================================================
@@ -3506,7 +3533,6 @@ const props = defineProps({
  * - trigger 값 변화에 따라 최신 상태 emit
  */
 const emit = defineEmits(['update:data'])
-const store = useExpertStore()
 
 // completeList는 트리거를 통해 requestPreviewData 호출 시에만 emit
 // ------------------------------------------------------------
