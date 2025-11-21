@@ -120,14 +120,14 @@ const selectedRequiredOptions = ref([])
 // 모달 표시 여부
 const isSaveModalVisible = ref(false)
 
-// 표시용 타이틀 우선순위: 로드된 이름 > 입력값 > 기본 문구
+// 표시용 타이틀 우선순위: 입력값(사용자/모달) > 로드된 이름 > 기본 문구
 const displayTargetName = computed(() => {
+    const typed = (targetName.value || '').trim()
     const loaded = (
         (props.queryData && props.queryData.targetName) ||
         ''
     ).trim()
-    const typed = (targetName.value || '').trim()
-    return loaded || typed || '임시 타겟 작업명'
+    return typed || loaded || '임시 타겟 작업명'
 })
 
 // props.targetId 변경 감지하여 selectTargetId 업데이트
@@ -421,7 +421,8 @@ const showModalSaveWorkbook = async () => {
 
     // targetId가 없거나 빈 경우: Insert 로직 (새 워크북 저장)
     if (targetId == null || targetId.length < 1) {
-        targetName.value = '' // TEST 호출을 위해 주석처리
+        // 입력값 초기화 제거: 저장/모달 입력으로 헤더 타이틀 즉시 반영되도록 함
+        // targetName.value = ''
 
         //saveTarget() // TEST 호출
 
