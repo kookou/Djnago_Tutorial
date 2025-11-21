@@ -50,6 +50,7 @@
     <WorkbookPathSaveModal
         v-model="isSaveModalVisible"
         :empNo="empNo"
+        :initial-target-name="displayTargetName"
         @save="handleWorkbookSave"
     />
 
@@ -135,19 +136,18 @@ watch(
     () => props.targetId,
     (newValue) => {
         selectTargetId.value = newValue
-        // 기존 타겟 로드 시, 로컬 입력값이 제목을 덮어쓰지 않도록 초기화
-        if (newValue) {
-            targetName.value = ''
-        }
+        // UPDATE 시에도 입력한 이름 유지 (로드된 이름은 별도 props.queryData.targetName)
+        // 필요 시 여기서 targetName.value = props.queryData.targetName 로 동기화 가능
     }
 )
 
 // 로드된 타겟명이 도착하면 로컬 입력값을 비워 충돌 방지
 watch(
     () => (props.queryData && props.queryData.targetName) || '',
-    (newVal) => {
-        if ((newVal || '').trim()) {
-            targetName.value = ''
+    (newVal, oldVal) => {
+        // 로드된 이름이 생겼고 사용자가 아직 아무 것도 입력하지 않은 경우만 프리셋
+        if ((newVal || '').trim() && !(targetName.value || '').trim()) {
+            // targetName.value = newVal // 자동 덮어쓰기 대신 유지 (표시 우선순위에서 loaded 활용)
         }
     }
 )

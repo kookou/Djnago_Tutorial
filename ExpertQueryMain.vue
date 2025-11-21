@@ -1141,15 +1141,15 @@ const homeSearchParam = ref({
     regId: '',
     changId: '',
     baseDate: '',
-    targetId: ''
-    // totalCount: 0,
-    // showRowSize: 0,
-    // currentPageIdx: 0,
-    // start: 0,
-    // end: 0,
-    // page: 0,
-    // listRows: 0,
-    // pageRows: 0
+    targetId: '',
+    totalCount: 0,
+    showRowSize: 0,
+    currentPageIdx: 0,
+    start: 0,
+    end: 0,
+    page: 0,
+    listRows: 0,
+    pageRows: 0
 })
 // 목적 list select & 모달 띄우기
 const showTargetGroupModal = async () => {
@@ -1243,8 +1243,7 @@ const targetAreaSelected = async (targetAreaId) => {
         targetModel.value
     )
     if (response) {
-        metaTableList.value = []
-        targetConditionList.value = []
+        setDefault()
         nextTick(() => {
             metaTableList.value = response.selectTreeItem
         })
@@ -3015,12 +3014,12 @@ function buildCompleteListFromFlat(flat) {
 const testParam = ref({
     selectTargetAreaGroupId: 'AG0000000004',
     selectTargetAreaId: 'TA0000000150',
-    selectTargetId: 'TM0000006646',
+    selectTargetId: 'TM0000006649',
     // selectTargetUserId : ,
     expertReqestType: 'load'
 })
 
-const testParam2 = ref({ targetId: 'TM0000006646' })
+const testParam2 = ref({ targetId: 'TM0000006649' })
 
 /** 서버 응답(selectTargetCondition) → flat 배열로 변환 */
 function mapResponseToFlat(resp) {
@@ -4717,6 +4716,7 @@ watchEffect(
 
         // ✅ 버튼 상태 재구성: 커넥터 key 기준으로 이전 상태를 보존하여 재배치
         const need = Math.max(0, result.length - 1)
+        const prevButtonStates = toRaw(buttonStates.value) || []
         const rebuiltStates = new Array(need).fill(null).map((_, i) => {
             const conn = finalConnectorList[i]
             const key = conn?.key
@@ -4728,7 +4728,11 @@ watchEffect(
             //             2) prev (이전 상태)
             //             3) conn.operator fallback
             //             4) 기본값 AND
-            const cond = conn?.operator || prev || 'AND'
+            const cond =
+                conn?.operator ||
+                prev ||
+                prevButtonStates?.[i]?.conditionType ||
+                'AND'
 
             if (DEBUG_TOGGLE && (conn?.operator || prev)) {
                 console.log(
