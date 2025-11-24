@@ -314,9 +314,9 @@
                                                     inputTypeSelected[node.key]
                                                 "
                                                 @click="showSubQueryModal(node)"
-                                                variant="light-2"
+                                                variant="link"
                                                 size="sm"
-                                                class="ms-auto"
+                                                class="text-decoration-underline"
                                             >
                                                 서브쿼리
                                             </b-button>
@@ -333,9 +333,9 @@
                                                 @click="
                                                     showDimensionModal(node)
                                                 "
-                                                variant="light-2"
+                                                variant="link"
                                                 size="sm"
-                                                class="ms-auto"
+                                                class="text-decoration-underline"
                                             >
                                                 관점설정
                                             </b-button>
@@ -2946,7 +2946,8 @@ function buildCompleteListFromFlat(flat) {
 
     // 그룹 닫기: 목표 깊이까지 pop
     function closeGroup(targetDepth) {
-        while (stack.length > 1 && currentConnectorDepth > targetDepth) {
+        while (stack.length > 1
+         && currentConnectorDepth > targetDepth) {
             stack.pop()
             currentConnectorDepth--
             if (DEBUG_TOGGLE) {
