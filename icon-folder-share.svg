@@ -1,0 +1,16 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+	<defs>
+		<image  width="24" height="20" id="img1" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAUCAMAAACgaw2xAAAAAXNSR0IB2cksfwAAALRQTFRFBKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7BKO7EPdUSQAAADx0Uk5TAAIQGRsRARWe8/7/8aYUg/XsqBIt2/3rpQM0+u+4r66toWAPNffOYcEnMyzXzSoYgOf7/ORxftPi49UN7G9L5QAAAIlJREFUeJxjZGAEAgYGhv9Mf/4zIAFGNkaIDJD4hCLBzMP4C6yDnZHx8y8kCRHGbxAWNyPja7HnCAkpxg9QJjcbxDawrY8ZVRCKYOC/NCPjG2wSQCDLiEOCVQqHBIPkUJNAhBUykGJl1Ga8j0VCiZFRHxiUN9GENRgZLzEysgGl/qCIszL+ZjsKAGIcIwAiZlFmAAAAAElFTkSuQmCC"/>
+	</defs>
+	<style>
+		tspan { white-space:pre } 
+		.t0 { font-size: 16px;fill: #ffffff;font-weight: 700;font-family: "Pretendard-Bold", "Pretendard" } 
+	</style>
+	<g id="폴더 1">
+		<use id="folder copy 2" href="#img1" x="0" y="1"/>
+		<text id="s" style="transform: matrix(1,0,0,1,12,17)" >
+			<tspan x="-4.3" y="0" class="t0">s
+</tspan>
+		</text>
+	</g>
+</svg>
