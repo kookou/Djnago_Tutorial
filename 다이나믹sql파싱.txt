@@ -1,0 +1,145 @@
+🛠️ $\text{SQL}$ 값 분리 및 파싱 $\text{Java}$ 함수이 클래스는 $\text{SQL}$ 쿼리에서 따옴표로 감싸진 문자열 리터럴과 숫자 리터럴을 찾아 플레이스홀더로 치환하는 데 중점을 둡니다.1. 결과 객체 정의변환된 $\text{SQL}$ 템플릿과 매개변수 리스트를 함께 반환하기 위한 간단한 클래스를 정의합니다.Javaimport java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * 파싱된 SQL 템플릿과 매개변수 리스트를 담는 DTO (Data Transfer Object)
+ */
+public class ParsedSqlQuery {
+    private final String sqlTemplate;
+    private final List<Object> parameters;
+
+    public ParsedSqlQuery(String sqlTemplate, List<Object> parameters) {
+        this.sqlTemplate = sqlTemplate;
+        this.parameters = parameters;
+    }
+
+    public String getSqlTemplate() {
+        return sqlTemplate;
+    }
+
+    public List<Object> getParameters() {
+        return parameters;
+    }
+}
+2. 파싱 로직 구현주요 파싱 로직을 포함하는 유틸리티 클래스입니다.Javapublic class DynamicSqlParser {
+
+    // 정규식 패턴: WHERE/SET 절 등 값 부분이 올 수 있는 위치를 가정하고,
+    // 작은따옴표로 감싸진 문자열 리터럴('...') 또는 공백/연산자 뒤에 오는 숫자 리터럴(123, -4.5)을 찾습니다.
+    // 주의: 컬럼명이나 키워드와 헷갈리지 않도록 복잡하게 처리합니다.
+    private static final String VALUE_PATTERN_STRING =
+        "\\s(?:=|!=|>=|<=|>|<|LIKE|IN|NOT IN|IS)\\s*('((?:[^'\\\\]|\\\\.)*?)'|([+-]?\\d+(?:\\.\\d+)?))";
+    
+    private static final Pattern VALUE_PATTERN = Pattern.compile(VALUE_PATTERN_STRING, Pattern.CASE_INSENSITIVE);
+
+    /**
+     * 동적 SQL 쿼리에서 값 리터럴을 추출하고, 그 위치를 JDBC 플레이스홀더 (?)로 치환합니다.
+     * 컬럼명/테이블명은 이 함수가 아닌, 외부에서 화이트리스트로 검증되어야 합니다.
+     *
+     * @param dynamicSql 동적으로 생성된 SQL 쿼리 문자열
+     * @return ParsedSqlQuery (SQL 템플릿과 매개변수 리스트)
+     */
+    public static ParsedSqlQuery parseAndExtractParameters(String dynamicSql) {
+        if (dynamicSql == null || dynamicSql.trim().isEmpty()) {
+            return new ParsedSqlQuery("", new ArrayList<>());
+        }
+
+        List<Object> parameters = new ArrayList<>();
+        StringBuilder newSql = new StringBuilder();
+        Matcher matcher = VALUE_PATTERN.matcher(dynamicSql);
+        int lastEnd = 0;
+
+        while (matcher.find()) {
+            // 1. 매칭되지 않은 이전 텍스트를 새로운 SQL에 추가
+            newSql.append(dynamicSql, lastEnd, matcher.start());
+
+            // 2. 연산자 부분(예: " = ")을 새로운 SQL에 추가
+            String operatorPart = matcher.group(0).substring(0, matcher.group(0).length() - matcher.group(1).length());
+            newSql.append(operatorPart.replaceAll("('((?:[^'\\\\]|\\\\.)*?)'|([+-]?\\d+(?:\\.\\d+)?))", "?"));
+
+            // 3. 값 추출 및 리스트에 추가
+            String stringValue = matcher.group(2); // 작은따옴표로 감싸진 문자열 (그룹 2)
+            String numberValue = matcher.group(3); // 숫자 (그룹 3)
+
+            if (stringValue != null) {
+                // 따옴표 안의 실제 문자열 값 추출 (따옴표 제거)
+                parameters.add(stringValue);
+            } else if (numberValue != null) {
+                // 숫자 값은 정수 또는 실수로 파싱
+                if (numberValue.contains(".")) {
+                    parameters.add(Double.parseDouble(numberValue));
+                } else {
+                    parameters.add(Long.parseLong(numberValue));
+                }
+            }
+
+            // 4. 다음 검색 시작 위치 업데이트
+            lastEnd = matcher.end();
+        }
+
+        // 5. 쿼리의 나머지 부분을 새로운 SQL에 추가
+        newSql.append(dynamicSql.substring(lastEnd));
+
+        return new ParsedSqlQuery(newSql.toString().trim(), parameters);
+    }
+}
+3. 사용 예시 및 $\text{JDBC}$ 적용이 파싱 함수로 생성된 결과를 $\text{JDBC}$의 $\text{PreparedStatement}$에 어떻게 적용하는지 보여주는 예시입니다.Javaimport java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Arrays;
+
+public class SqlExecutionExample {
+
+    // 가상의 Connection 객체를 얻는 메소드 (실제 환경에 맞게 구현 필요)
+    private static Connection getDummyConnection() {
+        // 실제 환경에서는 DataSource.getConnection() 등을 사용해야 함
+        return null; // 예시를 위해 null 반환
+    }
+
+    public static void main(String[] args) {
+        String dynamicSql = "SELECT user_name FROM users WHERE user_id = 101 AND status = 'Active' AND price > 99.99 AND name LIKE '%홍길동%'";
+
+        System.out.println("--- 1. 원본 동적 SQL ---");
+        System.out.println(dynamicSql);
+
+        // 1. 파싱 함수를 사용하여 SQL 분리
+        ParsedSqlQuery parsed = DynamicSqlParser.parseAndExtractParameters(dynamicSql);
+
+        System.out.println("\n--- 2. 분리된 결과 ---");
+        System.out.println("SQL 템플릿: " + parsed.getSqlTemplate());
+        System.out.println("매개변수 리스트: " + parsed.getParameters());
+
+        // 2. JDBC PreparedStatement를 사용하여 쿼리 실행 (보안 적용)
+        try {
+            executePreparedQuery(parsed.getSqlTemplate(), parsed.getParameters());
+        } catch (SQLException e) {
+            System.err.println("SQL 실행 중 오류 발생: " + e.getMessage());
+        }
+    }
+
+    // JDBC 실행 함수 (실제 환경에서는 Connection 관리 필요)
+    public static void executePreparedQuery(String sqlTemplate, List<Object> parameters) throws SQLException {
+        // 실제 JDBC 연결 객체가 필요합니다.
+        // try (Connection conn = getDummyConnection();
+        //      PreparedStatement ps = conn.prepareStatement(sqlTemplate)) {
+        
+        System.out.println("\n--- 3. PreparedStatement 실행 시뮬레이션 ---");
+        System.out.println("바인딩 쿼리: " + sqlTemplate);
+        
+        // 매개변수 바인딩 시뮬레이션
+        for (int i = 0; i < parameters.size(); i++) {
+            Object param = parameters.get(i);
+            // 실제 JDBC에서는 ps.setLong(i + 1, (Long)param), ps.setString(i + 1, (String)param) 등을 사용해야 합니다.
+            System.out.printf("인덱스 %d에 값 [%s] (타입: %s) 바인딩\n", 
+                              i + 1, param, param.getClass().getSimpleName());
+        }
+        
+        // try (ResultSet rs = ps.executeQuery()) {
+        //     // 결과 처리
+        // }
+        
+        // }
+    }
+}
